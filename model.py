@@ -9,17 +9,12 @@ import pickle
 import time
 
 '''
-
 Implement a sliding-window technique and use your trained classifier to search for vehicles in images.
     
 Run your pipeline on a video stream (start with the test_video.mp4 and later implement on full project_video.mp4)
 and create a heat map of recurring detections frame by frame to reject outliers and follow detected vehicles.
 
 Estimate a bounding box for vehicles detected.
-
-extract hog for the whole images at once
-normalize training data
-randomly shuffling the data
 '''
 
 ################
@@ -81,23 +76,23 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, vis=False, featu
         return features
 
 
-def extract_features(imgs, cspace='RGB',
+def extract_features(imgs, cspace='BGR',
                      orient=9, pix_per_cell=8, cell_per_block=2, hog_channel=0,
                      spatial_size=(32, 32), hist_bins=32, hist_range=(0, 256)):
     features = []
     for file in imgs:
         # Read in each one by one
-        image = mpimg.imread(file)
+        image = cv2.imread(file)
         # apply color conversion if other than 'RGB'
-        if cspace != 'RGB':
+        if cspace != 'BGR':
             if cspace == 'HSV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
             elif cspace == 'LUV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2LUV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2LUV)
             elif cspace == 'HLS':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2HLS)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
             elif cspace == 'YUV':
-                feature_image = cv2.cvtColor(image, cv2.COLOR_RGB2YUV)
+                feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
         else:
             feature_image = np.copy(image)
 
@@ -112,17 +107,16 @@ def extract_features(imgs, cspace='RGB',
             hog_features = get_hog_features(feature_image[:, :, hog_channel], orient,
                                             pix_per_cell, cell_per_block, vis=False, feature_vec=True)
 
-        # Append the new feature vector to the features list
-        features.append(hog_features)
-
         # Apply bin_spatial() to get spatial color features
-        #spatial_features = bin_spatial(feature_image, size=spatial_size)
+        spatial_features = bin_spatial(feature_image, size=spatial_size)
 
         # Apply color_hist() to get color histogram features
-        # hist_features = color_hist(feature_image, nbins=hist_bins, bins_range=hist_range)
+        hist_features = color_hist(feature_image, nbins=hist_bins, bins_range=hist_range)
 
-        # Append the new feature vector to the features list
-        #features.append(np.concatenate((spatial_features, hist_features)))
+
+        # Append feature vector to the features list
+        features.append(np.concatenate((hog_features, spatial_features, hist_features)))
+        #features.append(hog_features)
 
     # Return list of feature vectors
     return features
@@ -138,14 +132,7 @@ def normalize(feature):
         exit()
 
 
-def feature_extraction_process(car, noncar):
-
-    colorspace = 'YUV'  #based on test, HLS appears a good choice
-    orient = 11
-    pix_per_cell = 8
-    cell_per_block = 3
-    hog_channel = 1  # Can be 0, 1, 2, or "ALL"
-
+def feature_extraction_process(car, noncar, colorspace, orient, pix_per_cell, cell_per_block, hog_channel):
     t = time.time()
     X_car = extract_features(car, cspace=colorspace, orient=orient,
                              pix_per_cell=pix_per_cell, cell_per_block=cell_per_block, hog_channel=hog_channel)
@@ -153,7 +140,8 @@ def feature_extraction_process(car, noncar):
                              pix_per_cell=pix_per_cell, cell_per_block=cell_per_block, hog_channel=hog_channel)
 
     t2 = time.time()
-    print(round(t2 - t, 2), 'Seconds to extract HOG features...')
+    print(round(t2 - t, 2), 'Seconds to extract features.')
+
     X = np.vstack((X_car, X_noncar)).astype(np.float64)
     scaled_X = normalize(X)
 
@@ -197,21 +185,100 @@ def train_model():
     # Check the score of the SVC
     print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
 
-    with open(path+'svc.pickle', 'wb') as file:
+    with open('svc.pickle', 'wb') as file:
         pickle.dump(svc, file)
     print('Model saved.')
+
+def image_feature_extraction(img, color_space='BGR', spatial_size=(32, 32), hist_bins=32, orient=9,
+                             pix_per_cell=8, cell_per_block=2, hog_channel=0,
+                             spatial_feat=False, hist_feat=False, hog_feat=True):
+    pass
+
+################
+# 4. sliding window
+################
+def draw_boxes(img, bboxes, color=(151, 23, 198), thick=4):
+    # Make a copy of the image
+    imcopy = np.copy(img)
+    # Iterate through the bounding boxes
+    for bbox in bboxes:
+        # Draw a rectangle given bbox coordinates
+        cv2.rectangle(imcopy, bbox[0], bbox[1], color, thick)
+    # Return the image copy with boxes drawn
+    return imcopy
+
+
+def slide_window(img, x_start_stop=[None, None], y_start_stop=[None, None],
+                 xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
+    # If x and/or y start/stop positions not defined, set to image size
+    if x_start_stop[0] == None:
+        x_start_stop[0] = 0
+    if x_start_stop[1] == None:
+        x_start_stop[1] = img.shape[1]
+    if y_start_stop[0] == None:
+        y_start_stop[0] = 0
+    if y_start_stop[1] == None:
+        y_start_stop[1] = img.shape[0]
+    # Compute the span of the region to be searched
+    xspan = x_start_stop[1] - x_start_stop[0]
+    yspan = y_start_stop[1] - y_start_stop[0]
+    # Compute the number of pixels per step in x/y
+    nx_pix_per_step = np.int(xy_window[0]*(1 - xy_overlap[0]))
+    ny_pix_per_step = np.int(xy_window[1]*(1 - xy_overlap[1]))
+    # Compute the number of windows in x/y
+    nx_buffer = np.int(xy_window[0]*(xy_overlap[0]))
+    ny_buffer = np.int(xy_window[1]*(xy_overlap[1]))
+    nx_windows = np.int((xspan-nx_buffer)/nx_pix_per_step)
+    ny_windows = np.int((yspan-ny_buffer)/ny_pix_per_step)
+    # Initialize a list to append window positions to
+    window_list = []
+    # Loop through finding x and y window positions
+    # Note: you could vectorize this step, but in practice
+    # you'll be considering windows one by one with your
+    # classifier, so looping makes sense
+    for ys in range(ny_windows):
+        for xs in range(nx_windows):
+            # Calculate window position
+            startx = xs*nx_pix_per_step + x_start_stop[0]
+            endx = startx + xy_window[0]
+            starty = ys*ny_pix_per_step + y_start_stop[0]
+            endy = starty + xy_window[1]
+            # Append window position to list
+            window_list.append(((startx, starty), (endx, endy)))
+    # Return the list of windows
+    return window_list
+
 
 ################
 #full pipeline
 ################
 
 #1 import images
-#car, noncar = import_image()
+car, noncar = import_image()
+
+colorspace = 'YUV'  #based on test, YUV appears a good choice
+orient = 11
+pix_per_cell = 8
+cell_per_block = 3
+hog_channel = 1
 
 #2.extract feature from images
-#feature_extraction_process(car, noncar)
+feature_extraction_process(car, noncar, colorspace, orient, pix_per_cell, cell_per_block, hog_channel)
 
 #3. train SVM model
-#train_model()
+train_model()
 
+#4. sliding window to drawbox for identified car
+#path ='../data/vehicles/KITTI_extracted/60.png'
+#path ='../data/test_images/test3.jpg'
+#image = mpimg.imread(path)
 
+'''
+windows = slide_window(image, x_start_stop=[None, None], y_start_stop=[None, None],
+                       xy_window=(128, 128), xy_overlap=(0.5, 0.5))
+
+window_img = draw_boxes(image, windows, color=(0, 0, 255), thick=6)
+
+plt.imshow(window_img)
+plt.show()
+'''

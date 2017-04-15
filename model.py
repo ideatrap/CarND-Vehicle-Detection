@@ -44,7 +44,6 @@ def import_image():
 ################
 #2. extract features
 ################
-
 # Define a function to compute binned color features
 def bin_spatial(img, size=(32, 32)):
     # Use cv2.resize().ravel() to create the feature vector
@@ -83,7 +82,9 @@ def extract_features(imgs, cspace='BGR',
     for file in imgs:
         # Read in each one by one
         image = cv2.imread(file)
-        # apply color conversion if other than 'RGB'
+        # apply color conversion if other than 'BGR'
+
+        image = cv2.resize(image, (64,64))
         if cspace != 'BGR':
             if cspace == 'HSV':
                 feature_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -190,7 +191,13 @@ def train_model():
 ################
 # 4. sliding window
 ################
-def draw_boxes(img, bboxes, color=(151, 23, 198), thick=4):
+def display_image(img, conv = True):
+    if conv == True:
+        img = convert_color(img, colorspace='RGB')
+    plt.imshow(img)
+    plt.show()
+
+def draw_boxes(img, bboxes, color=(255, 130, 53), thick=4):
     # Make a copy of the image
     imcopy = np.copy(img)
     # Iterate through the bounding boxes
@@ -252,6 +259,8 @@ def convert_color(img, colorspace='YUV'):
         return cv2.cvtColor(img, cv2.COLOR_BGR2LUV)
     elif colorspace == 'YUV':
         return cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+    elif colorspace == 'RGB':
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     else:
         print('Color conversion error! Color code not recognized')
         exit()
@@ -261,12 +270,12 @@ def convert_color(img, colorspace='YUV'):
 def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
                  pix_per_cell, cell_per_block, spatial_size = (32, 32), hist_bins = 32):
 
+
     draw_img = np.copy(img)
     img = img.astype(np.float32) / 255
     window_list= []
-
     img_tosearch = img[ystart:ystop, :, :]
-    ctrans_tosearch = convert_color(img_tosearch, colorspace='YUV')
+    ctrans_tosearch = convert_color(img_tosearch, colorspace=colorspace)
 
 
     if scale != 1:
@@ -277,31 +286,36 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
     ch2 = ctrans_tosearch[:, :, 1]
     ch3 = ctrans_tosearch[:, :, 2]
 
+
     # Define blocks and steps as above
-    nxblocks = (ch1.shape[1] // pix_per_cell) - 1
+    nxblocks = (ch1.shape[1] // pix_per_cell) -1
     nyblocks = (ch1.shape[0] // pix_per_cell) - 1
     nfeat_per_block = orient * cell_per_block ** 2
 
-    # 64 was the orginal sampling rate, with 8 cells and 8 pix per cell
-    window = 64
-    nblocks_per_window = (window // pix_per_cell) - 1
-    cells_per_step = 6  # Instead of overlap, define how many cells to step
+    window = 64 #8X8, 8 pixel per cell, 8 cells per block
+    nblocks_per_window = (window // pix_per_cell) -1
+    cells_per_step = 5  # skip 62.5% every move
     nxsteps = (nxblocks - nblocks_per_window) // cells_per_step
     nysteps = (nyblocks - nblocks_per_window) // cells_per_step
 
     # Compute individual channel HOG features for the entire image
-    hog1 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
-    hog2 = get_hog_features(ch2, orient, pix_per_cell, cell_per_block, feature_vec=False)
-    hog3 = get_hog_features(ch3, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    hog1 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, vis=False,feature_vec=False)
+    hog2 = get_hog_features(ch2, orient, pix_per_cell, cell_per_block, vis=False,feature_vec=False)
+    hog3 = get_hog_features(ch3, orient, pix_per_cell, cell_per_block, vis=False,feature_vec=False)
+
 
     for xb in range(nxsteps):
         for yb in range(nysteps):
             ypos = yb * cells_per_step
             xpos = xb * cells_per_step
+
+
             # Extract HOG for this patch
             hog_feat1 = hog1[ypos:ypos + nblocks_per_window, xpos:xpos + nblocks_per_window].ravel()
             hog_feat2 = hog2[ypos:ypos + nblocks_per_window, xpos:xpos + nblocks_per_window].ravel()
             hog_feat3 = hog3[ypos:ypos + nblocks_per_window, xpos:xpos + nblocks_per_window].ravel()
+
+
             hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
 
             xleft = xpos * pix_per_cell
@@ -312,11 +326,12 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
 
             # Get color features
             spatial_features = bin_spatial(subimg, size=spatial_size)
-            hist_features = color_hist(subimg, nbins=hist_bins)
+
+            hist_features = color_hist(subimg, nbins=hist_bins, bins_range=(0, 256))
 
             # Scale features and make a prediction
-            test_features = X_scaler.transform(
-                np.hstack((hog_features, spatial_features, hist_features)).reshape(1, -1))
+            test_features = X_scaler.transform(np.concatenate((hog_features, spatial_features, hist_features)).reshape(1, -1))
+            #test_features = X_scaler.transform(hog_features.reshape(1,-1))
 
             test_prediction = svc.predict(test_features)
 
@@ -330,7 +345,7 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
     return window_list
 
 
-def find_car_window(img, colorspace,orient, pix_per_cell, cell_per_block,
+def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block,
                     spatial_size = (32, 32), hist_bins = 32):
     windows = []
 
@@ -340,20 +355,17 @@ def find_car_window(img, colorspace,orient, pix_per_cell, cell_per_block,
     with open('x_scaler.pickle', 'rb') as file:
         X_scaler = pickle.load(file)
 
-
-    ystart = 0
-    ystop = 0
+    ystart = 300
+    ystop = None
     scale = 1.1
 
-    #TODO check whether sub_sampling works
-    #TODO slide through on different dimensons, and different horizon
-    #TODO implement heatmap to identify the real car
-    #TODO run through the pipeline to get the video out
+
+
 
     window = sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
                  pix_per_cell, cell_per_block, spatial_size, hist_bins)
 
-    windows.append(window)
+    windows = windows + window
     return windows
 
 
@@ -367,7 +379,7 @@ def find_car_window(img, colorspace,orient, pix_per_cell, cell_per_block,
 colorspace = 'YUV'  #based on test, YUV appears a good choice
 orient = 11
 pix_per_cell = 8
-cell_per_block = 3
+cell_per_block = 2
 hog_channel = 'ALL'
 
 #2.extract feature from images
@@ -378,15 +390,21 @@ hog_channel = 'ALL'
 
 #4. sliding window to draw box for identified cars
 
-'''
-path ='../data/test_images/test3.jpg'
+path ='../data/test_images/test1.jpg'
+#path ='../data/test_images/test10.png'
+#path ='../data/vehicles/KITTI_extracted/70.png'
+#path ='../data/non-vehicles/Extras/extra14.png'
 image = cv2.imread(path)
-windows = find_car_window (image, colorspace,orient, pix_per_cell, cell_per_block)
-window_img = draw_boxes(image, windows, color=(0, 0, 255), thick=6)
 
-plt.imshow(window_img)
-plt.show()
-'''
+#find all windows containing car
+windows = find_car_window (image, colorspace, orient, pix_per_cell, cell_per_block)
 
-#appendix
-#path ='../data/vehicles/KITTI_extracted/60.png'
+if len(windows) > 0:
+    window_img = draw_boxes(image, windows)
+    display_image(window_img)
+else:
+    print('No car identified!')
+
+#TODO slide through on different dimensons, and different horizon
+#TODO implement heatmap to identify the real car
+#TODO run through the pipeline to get the video out

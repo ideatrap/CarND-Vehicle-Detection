@@ -339,7 +339,6 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
 
 def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale,
                     spatial_size = (32, 32), hist_bins = 32):
-                    #(ystart_ls = [0],ystop_ls = [1000],scale_ls = [1]):
     windows = []
 
     with open('svc.pickle', 'rb') as file:
@@ -347,10 +346,6 @@ def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start
 
     with open('x_scaler.pickle', 'rb') as file:
         X_scaler = pickle.load(file)
-
-    ystart_ls = [380, 450]
-    ystop_ls = [560, 700]
-    scale_ls = [1.4, 2.2]
 
     ystart_ls= start_stop_scale[0]
     ystop_ls = start_stop_scale[1]
@@ -399,6 +394,26 @@ def draw_labeled_bboxes(img, labels):
     return img
 
 ################
+#6. Video Editing
+################
+
+def pipeline(img):
+    
+
+
+    return img
+
+
+from moviepy.editor import VideoFileClip
+
+def process_video(video_path):
+    #clip1 = VideoFileClip(video_path).subclip(41,43)
+    clip1 = VideoFileClip(video_path)
+    video = clip1.fl_image(pipeline)
+    video.write_videofile('output.mp4', audio=False)
+
+
+################
 #full pipeline
 ################
 
@@ -419,25 +434,30 @@ hog_channel = 'ALL'
 
 #4. sliding window to draw box for identified cars
 
-ystart_ls = [350, 380, 450]
-ystop_ls = [500, 600, 700]
-scale_ls = [1, 1.3, 2.2]
+ystart_ls = [390]
+ystop_ls = [530]
+scale_ls = [1]
 
+ystart_ls = [390, 360, 370]
+ystop_ls = [530,900, 900]
+scale_ls = [1, 1.6, 2.3]
+
+
+#1.2 1.6 2.3
 start_stop_scale = np.vstack((ystart_ls,ystop_ls, scale_ls))
 
-path ='../data/test_images/test1.jpg'
+path ='../data/test_images/test6.jpg'
 #path ='../data/vehicles/KITTI_extracted/70.png'
 #path ='../data/non-vehicles/Extras/extra14.png'
 image = cv2.imread(path)
 
 #find all windows containing car
 windows = find_car_window (image, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
-                           #ystart_ls = ystart_ls,ystop_ls = ystop_ls,scale_ls = ystart_ls)
 
 if len(windows) > 0:
     heat = np.zeros_like(image[:, :, 0]).astype(np.float)
     heat = add_heat(heat, windows)
-    heat = apply_threshold(heat, 0)  # remove false positive
+    heat = apply_threshold(heat, 1)  # remove false positive
 
     heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
     labels = label(heatmap)
@@ -453,3 +473,6 @@ if len(windows) > 0:
     plt.show()
 else:
     print('No car identified!')
+
+#6 process the video
+process_video("project_video.mp4")

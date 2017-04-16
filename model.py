@@ -398,7 +398,7 @@ def draw_labeled_bboxes(img, labels):
 ################
 
 def pipeline(img):
-    
+
 
 
     return img

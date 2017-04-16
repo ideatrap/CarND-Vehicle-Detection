@@ -7,15 +7,7 @@ from skimage.feature import hog
 from sklearn.preprocessing import StandardScaler
 import pickle
 import time
-
-'''
-Implement a sliding-window technique and use your trained classifier to search for vehicles in images.
-    
-Run your pipeline on a video stream (start with the test_video.mp4 and later implement on full project_video.mp4)
-and create a heat map of recurring detections frame by frame to reject outliers and follow detected vehicles.
-
-Estimate a bounding box for vehicles detected.
-'''
+from scipy.ndimage.measurements import label
 
 ################
 #1. read in all images
@@ -345,8 +337,9 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
     return window_list
 
 
-def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block,
+def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale,
                     spatial_size = (32, 32), hist_bins = 32):
+                    #(ystart_ls = [0],ystop_ls = [1000],scale_ls = [1]):
     windows = []
 
     with open('svc.pickle', 'rb') as file:
@@ -355,19 +348,55 @@ def find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block,
     with open('x_scaler.pickle', 'rb') as file:
         X_scaler = pickle.load(file)
 
-    ystart = 300
-    ystop = None
-    scale = 1.1
+    ystart_ls = [380, 450]
+    ystop_ls = [560, 700]
+    scale_ls = [1.4, 2.2]
+
+    ystart_ls= start_stop_scale[0]
+    ystop_ls = start_stop_scale[1]
+    scale_ls = start_stop_scale[2]
 
 
+    for ystart, ystop, scale in zip(ystart_ls, ystop_ls, scale_ls):
+        window = sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
+                              pix_per_cell, cell_per_block, spatial_size, hist_bins)
 
-
-    window = sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
-                 pix_per_cell, cell_per_block, spatial_size, hist_bins)
-
-    windows = windows + window
+        windows = windows + window
     return windows
 
+################
+#5. Heatmap
+################
+def add_heat(heatmap, bbox_list):
+    # Iterate through list of bboxes
+    for box in bbox_list:
+        # Add += 1 for all pixels inside each bbox
+        # Assuming each "box" takes the form ((x1, y1), (x2, y2))
+        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+    return heatmap
+
+def apply_threshold(heatmap, threshold):
+    # Zero out pixels below the threshold
+    heatmap[heatmap <= threshold] = 0
+    # Return thresholded map
+    return heatmap
+
+def draw_labeled_bboxes(img, labels):
+    # Iterate through all detected cars
+    for car_number in range(1, labels[1]+1):
+        # Find pixels with each car_number label value
+        nonzero = (labels[0] == car_number).nonzero()
+        # Identify x and y values of those pixels
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+        # Define a bounding box based on min/max x and y
+        bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
+        # Draw the box on the image
+
+        cv2.rectangle(img, bbox[0], bbox[1], (255, 0, 0), 4)
+    # Return the image
+    return img
 
 ################
 #full pipeline
@@ -390,21 +419,37 @@ hog_channel = 'ALL'
 
 #4. sliding window to draw box for identified cars
 
+ystart_ls = [350, 380, 450]
+ystop_ls = [500, 600, 700]
+scale_ls = [1, 1.3, 2.2]
+
+start_stop_scale = np.vstack((ystart_ls,ystop_ls, scale_ls))
+
 path ='../data/test_images/test1.jpg'
-#path ='../data/test_images/test10.png'
 #path ='../data/vehicles/KITTI_extracted/70.png'
 #path ='../data/non-vehicles/Extras/extra14.png'
 image = cv2.imread(path)
 
 #find all windows containing car
-windows = find_car_window (image, colorspace, orient, pix_per_cell, cell_per_block)
+windows = find_car_window (image, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
+                           #ystart_ls = ystart_ls,ystop_ls = ystop_ls,scale_ls = ystart_ls)
 
 if len(windows) > 0:
-    window_img = draw_boxes(image, windows)
-    display_image(window_img)
+    heat = np.zeros_like(image[:, :, 0]).astype(np.float)
+    heat = add_heat(heat, windows)
+    heat = apply_threshold(heat, 0)  # remove false positive
+
+    heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
+    labels = label(heatmap)
+    draw_img = draw_labeled_bboxes(np.copy(image), labels)
+    draw_img = cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB)
+
+    fig = plt.figure()
+    plt.subplot(211)
+    plt.imshow(draw_img)
+    plt.subplot(212)
+    plt.imshow(heatmap, cmap='hot')
+    fig.tight_layout()
+    plt.show()
 else:
     print('No car identified!')
-
-#TODO slide through on different dimensons, and different horizon
-#TODO implement heatmap to identify the real car
-#TODO run through the pipeline to get the video out

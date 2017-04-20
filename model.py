@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import pickle
 import time
 from scipy.ndimage.measurements import label
+import scipy.misc
 
 
 ################
@@ -150,7 +151,6 @@ from sklearn.svm import LinearSVC
 
 def train_model():
 
-
     with open(path + 'y.pickle', 'rb') as file:
         y = pickle.load(file)
 
@@ -277,7 +277,7 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
 
    window = 64 #8X8, 8 pixel per cell, 8 cells per block
    nblocks_per_window = (window // pix_per_cell) -1
-   cells_per_step = 5  # skip 62.5% every move
+   cells_per_step = 2  # skip 62.5% every move
    nxsteps = (nxblocks - nblocks_per_window) // cells_per_step
    nysteps = (nyblocks - nblocks_per_window) // cells_per_step
 
@@ -314,16 +314,8 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
 
            # Scale features and make a prediction
            features = X_scaler.transform(np.hstack((hog_features, spatial_features, hist_features)).reshape(1,-1))
-           #features = np.hstack((hog_features, spatial_features, hist_features))
-           features = X_scaler.transform(np.hstack((hog_features, spatial_features, hist_features)))
-
            #features = X_scaler.transform(hog_features.reshape(1,-1))
            #features = hog_features
-
-
-           with open('feature.pickle', 'rb') as file:
-               feature2 = pickle.load(file)
-
 
            features = np.array(features)
            prediction = svc.predict(features)
@@ -393,16 +385,69 @@ def draw_labeled_bboxes(img, labels):
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
         # Draw the box on the image
 
-        cv2.rectangle(img, bbox[0], bbox[1], (255, 0, 0), 4)
+        cv2.rectangle(img, bbox[0], bbox[1], (0, 0, 255), 4)
     # Return the image
     return img
+
+#test the whole pipeline on single image
+def test_pipeline(path):
+    img = cv2.imread(path)
+    windows = find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
+
+    if len(windows) > 0:
+
+        heat = np.zeros_like(img[:, :, 0]).astype(np.float)
+        heat = add_heat(heat, windows)
+        heat = apply_threshold(heat, 0)  # remove false positive
+
+        heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
+        labels = label(heatmap)
+        draw_img = draw_labeled_bboxes(np.copy(img), labels)
+        draw_img = cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB)
+
+        fig = plt.figure()
+        plt.subplot(211)
+        plt.imshow(draw_img)
+        plt.subplot(212)
+        plt.imshow(heatmap, cmap='hot')
+        fig.tight_layout()
+        scipy.misc.imsave('../data/marked/test.jpg',draw_img )
+        plt.show()
+
+
+    else:
+        print('No car identified')
 
 ################
 #6. Video Editing
 ################
 
+index = 0
 def pipeline(img):
-    return img
+    # find all windows containing car
+    global index
+    path_image_video_o = '../data/original/' + str(index) +'.jpg'
+    path_image_video_marked = '../data/marked/' + str(index) + '.jpg'
+
+    scipy.misc.imsave(path_image_video_o, img)
+
+    windows = find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
+
+    if len(windows) > 0:
+        heat = np.zeros_like(img[:, :, 0]).astype(np.float)
+        heat = add_heat(heat, windows)
+        heat = apply_threshold(heat, 1)  # remove false positive
+
+        heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
+        labels = label(heatmap)
+        draw_img = draw_labeled_bboxes(np.copy(img), labels)
+
+    else:
+        draw_img = np.copy(img)
+
+    scipy.misc.imsave(path_image_video_marked, draw_img)
+    index += 1
+    return draw_img
 
 
 from moviepy.editor import VideoFileClip
@@ -419,7 +464,7 @@ def process_video(video_path):
 ################
 
 #1 import images
-car, noncar = import_image()
+#car, noncar = import_image()
 
 colorspace = 'YUV'
 orient = 11
@@ -428,57 +473,32 @@ cell_per_block = 2
 hog_channel = 'ALL'
 
 #2.extract feature from images
-feature_extraction_process(car, noncar, colorspace, orient, pix_per_cell, cell_per_block, hog_channel)
+#feature_extraction_process(car, noncar, colorspace, orient, pix_per_cell, cell_per_block, hog_channel)
 
 #3. train SVM model
-train_model()
+#train_model()
 
-#4. sliding window to draw box for identified cars
+#4. test the pipeline to slide window to draw box for single image
 
+'''
+ystart_ls = [390, 390, 400, 400]
+ystop_ls = [460,560, 560, 650]
+scale_ls = [1, 1.4, 2, 2.5]
+'''
 
+ystart_ls = [400, 390, 400, 400,420]
+ystop_ls = [460,480, 560, 650,480]
+scale_ls = [1, 1.4, 2, 2.5,1]
 
-ystart_ls = [390, 360, 370]
-ystop_ls = [530,900, 900]
-scale_ls = [1, 1.6, 2.3]
-
-
-ystart_ls = [350]
-ystop_ls = [900]
-scale_ls = [1.4]
-
-#1.2 1.6 2.3
 start_stop_scale = np.vstack((ystart_ls,ystop_ls, scale_ls))
 
-path3 ='../data/test_images/test6.jpg'
 
-image = cv2.imread(path3)
+path_test ='../data/test_images/7.jpg'
+test_pipeline(path_test)
 
-#find all windows containing car
-windows = find_car_window (image, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
-
-
-if len(windows) > 0:
-
-    print('{} windows found'.format(len(windows)))
-
-    heat = np.zeros_like(image[:, :, 0]).astype(np.float)
-    heat = add_heat(heat, windows)
-    heat = apply_threshold(heat, 0)  # remove false positive
-
-    heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
-    labels = label(heatmap)
-    draw_img = draw_labeled_bboxes(np.copy(image), labels)
-    draw_img = cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB)
-
-    fig = plt.figure()
-    plt.subplot(211)
-    plt.imshow(draw_img)
-    plt.subplot(212)
-    plt.imshow(heatmap, cmap='hot')
-    fig.tight_layout()
-    plt.show()
-else:
-    print('No car identified!')
 
 #6 process the video
-#process_video("project_video.mp4")
+path_video =path+"project_video.mp4"
+path_video =path+"test_video.mp4"
+#process_video(path_video)
+

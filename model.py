@@ -9,11 +9,6 @@ import time
 from scipy.ndimage.measurements import label
 import scipy.misc
 
-colorspace = 'YUV'
-orient = 11
-pix_per_cell = 8
-cell_per_block = 2
-hog_channel = 'ALL'
 
 ################
 #1. read in all images
@@ -204,12 +199,13 @@ def train_model():
 # 4. sliding window
 ################
 
-def draw_boxes(img, bboxes, color=(255, 130, 53), thick=4):
+def draw_boxes(img, bboxes, color=(255, 0, 0), thick=4):
     # Make a copy of the image
     imcopy = np.copy(img)
     # Iterate through the bounding boxes
     for bbox in bboxes:
         # Draw a rectangle given bbox coordinates
+
         cv2.rectangle(imcopy, bbox[0], bbox[1], color, thick)
     # Return the image copy with boxes drawn
     return imcopy
@@ -344,8 +340,8 @@ def sub_sampling(img, ystart, ystop, scale, svc, X_scaler, colorspace, orient,
                xbox_left = np.int(xleft * scale)
                ytop_draw = np.int(ytop * scale)
                win_draw = np.int(window * scale)
-               window_list.append(((xbox_left, ytop_draw + ystart),
-                                   (xbox_left + win_draw, ytop_draw + win_draw + ystart)))
+               window_list.append(((int(xbox_left), int(ytop_draw + ystart)),
+                                   (int(xbox_left + win_draw), int(ytop_draw + win_draw + ystart))))
 
    return window_list
 
@@ -414,6 +410,8 @@ def test_pipeline(path):
     img = cv2.imread(path)
     windows = find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
 
+
+
     if len(windows) > 0:
 
         heat = np.zeros_like(img[:, :, 0]).astype(np.float)
@@ -425,6 +423,10 @@ def test_pipeline(path):
         draw_img = draw_labeled_bboxes(np.copy(img), labels)
         draw_img = cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB)
 
+        #Draw the individual window
+        #draw_img = draw_boxes(draw_img, windows)
+        #plt.imshow(draw_img)
+
         #display the heat map and marked image
         fig = plt.figure()
         plt.subplot(211)
@@ -432,12 +434,13 @@ def test_pipeline(path):
         plt.subplot(212)
         plt.imshow(heatmap, cmap='hot')
         fig.tight_layout()
-        scipy.misc.imsave('single.jpg',draw_img)
+
         plt.show()
 
 
     else:
         print('No car identified')
+
 
 ################
 #6. Video Editing
@@ -514,9 +517,8 @@ scale_ls = [1.2, 1.2,1.4,1.4, 1.7]
 start_stop_scale = np.vstack((ystart_ls,ystop_ls, scale_ls))
 
 
-path_test ='../data/test_images/test6.jpg'
-
-#test_pipeline(path_test)
+path_test ='../data/test_images/test5.jpg'
+test_pipeline(path_test)
 
 
 #6 process the video

@@ -119,7 +119,7 @@ Challenge:
 
   1) **Color conversion**. I read in image from `cv2.imread()` in `BGR` format, I had carefully converted image for display. However, `VideoFileClip.fl_image()` reads in image in `RGB` format, and makes the prediction slightly off.
 
-  2)**normalization**. As I was switching between `cv2.imread()` and `mpimg.imread()`, I had one liner `img = img.astype(np.float32) / 255` to scale the image, and I messed it up. In the end, my model doesn't work, and always predict positive on all `.jpg` images no matter what is fed in. I only discovered it through forum.
+  2) **normalization**. As I was switching between `cv2.imread()` and `mpimg.imread()`, I had one liner `img = img.astype(np.float32) / 255` to scale the image, and I messed it up. In the end, my model doesn't work, and always predict positive on all `.jpg` images no matter what is fed in. I only discovered it through forum.
 
 Improvement:
 Right now, the model still captures the car on the opposite side road as positive. It's a right thing to do because it's indeed a car, and it should detect it in case the car runs on the wrong side of the road.

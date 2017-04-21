@@ -9,11 +9,18 @@ import time
 from scipy.ndimage.measurements import label
 import scipy.misc
 
+colorspace = 'YUV'
+orient = 11
+pix_per_cell = 8
+cell_per_block = 2
+hog_channel = 'ALL'
 
 ################
 #1. read in all images
 ################
 path = '../data/'
+path_write ='../data/vehicles/KITTI_extracted/92.png'
+#path_write= '../data/non-vehicles/Extras/extra34.png'
 
 def import_image():
 
@@ -58,6 +65,19 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, vis=False, featu
                        cells_per_block=(cell_per_block, cell_per_block), transform_sqrt=False,
                        visualise=False, feature_vector=feature_vec)
         return features
+
+
+'''
+#Visualize HOG feature
+img = cv2.imread(path_write)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+img = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+img = cv2.resize(img, (64,64))
+
+features, hog_image = get_hog_features(img[:,:,0], orient, pix_per_cell, cell_per_block, vis=True)
+plt.imshow(hog_image)
+plt.show()
+'''
 
 
 def extract_features(imgs, cspace,
@@ -385,7 +405,7 @@ def draw_labeled_bboxes(img, labels):
         bbox = ((np.min(nonzerox), np.min(nonzeroy)), (np.max(nonzerox), np.max(nonzeroy)))
         # Draw the box on the image
 
-        cv2.rectangle(img, bbox[0], bbox[1], (0, 0, 255), 4)
+        cv2.rectangle(img, bbox[0], bbox[1], (255, 0, 0), 4)
     # Return the image
     return img
 
@@ -398,20 +418,21 @@ def test_pipeline(path):
 
         heat = np.zeros_like(img[:, :, 0]).astype(np.float)
         heat = add_heat(heat, windows)
-        heat = apply_threshold(heat, 0)  # remove false positive
+        heat = apply_threshold(heat, 2)  # remove false positive
 
         heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
         labels = label(heatmap)
         draw_img = draw_labeled_bboxes(np.copy(img), labels)
         draw_img = cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB)
 
+        #display the heat map and marked image
         fig = plt.figure()
         plt.subplot(211)
         plt.imshow(draw_img)
         plt.subplot(212)
         plt.imshow(heatmap, cmap='hot')
         fig.tight_layout()
-        scipy.misc.imsave('../data/marked/test.jpg',draw_img )
+        scipy.misc.imsave('single.jpg',draw_img)
         plt.show()
 
 
@@ -424,19 +445,23 @@ def test_pipeline(path):
 
 index = 0
 def pipeline(img):
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     # find all windows containing car
     global index
+
+
     path_image_video_o = '../data/original/' + str(index) +'.jpg'
     path_image_video_marked = '../data/marked/' + str(index) + '.jpg'
 
-    scipy.misc.imsave(path_image_video_o, img)
+    #to save the original image
+    #scipy.misc.imsave(path_image_video_o, img)
 
     windows = find_car_window(img, colorspace, orient, pix_per_cell, cell_per_block, start_stop_scale)
 
     if len(windows) > 0:
         heat = np.zeros_like(img[:, :, 0]).astype(np.float)
         heat = add_heat(heat, windows)
-        heat = apply_threshold(heat, 1)  # remove false positive
+        heat = apply_threshold(heat, 2)  # remove false positive
 
         heatmap = np.clip(heat, 0, 255)  # make it 3 channel image
         labels = label(heatmap)
@@ -445,7 +470,8 @@ def pipeline(img):
     else:
         draw_img = np.copy(img)
 
-    scipy.misc.imsave(path_image_video_marked, draw_img)
+    #scipy.misc.imsave(path_image_video_marked, draw_img)
+    draw_img = cv2.cvtColor(draw_img, cv2.COLOR_RGB2BGR)
     index += 1
     return draw_img
 
@@ -480,25 +506,21 @@ hog_channel = 'ALL'
 
 #4. test the pipeline to slide window to draw box for single image
 
-'''
-ystart_ls = [390, 390, 400, 400]
-ystop_ls = [460,560, 560, 650]
-scale_ls = [1, 1.4, 2, 2.5]
-'''
+ystart_ls = [380,405,400,410,400]
+ystop_ls = [540,550,600,630,800]
+scale_ls = [1.2, 1.2,1.4,1.4, 1.7]
 
-ystart_ls = [400, 390, 400, 400,420]
-ystop_ls = [460,480, 560, 650,480]
-scale_ls = [1, 1.4, 2, 2.5,1]
 
 start_stop_scale = np.vstack((ystart_ls,ystop_ls, scale_ls))
 
 
-path_test ='../data/test_images/7.jpg'
-test_pipeline(path_test)
+path_test ='../data/test_images/test6.jpg'
+
+#test_pipeline(path_test)
 
 
 #6 process the video
 path_video =path+"project_video.mp4"
-path_video =path+"test_video.mp4"
+#path_video =path+"test_video.mp4"
 #process_video(path_video)
 
